@@ -9,6 +9,8 @@ from numpy import asarray, add, uint8, clip
 from numpy.random import randint
 from torch.utils.data import Dataset
 
+from transforms.to_tensor import ToTensor
+
 
 def show_image(input_tensor, output_tensor, index):
     Image.fromarray(input_tensor.numpy()[index][0][:, :], 'L').show()
@@ -29,7 +31,7 @@ def _noise_open(path):
 
 class ImageDataset(Dataset):
     # https://pytorch.org/tutorials/recipes/recipes/custom_dataset_transforms_loader.html?highlight=dataloader
-    def __init__(self, image_directory: str = 'resources/dataset', size: int = 20, transform=None):
+    def __init__(self, image_directory: str = '../resources/dataset', size: int = 20, transform=None):
         """
         Initialize image dataset
         :param image_directory: Path to the directory containing training images
@@ -91,7 +93,7 @@ class ImageDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = ImageDataset('')
+    dataset = ImageDataset('../resources/dataset', transform=ToTensor())
     print(len(dataset))
     item = dataset[0]
     item = dataset[0]
