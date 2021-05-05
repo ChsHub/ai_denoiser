@@ -12,10 +12,10 @@ from send2trash import send2trash
 from timerpy import Timer
 from torch import nn, optim
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose
 
-from src.image_dataset import ImageDataset
 from src.denoise_net import Net
+from src.image_dataset import ImageDataset
+from src.paths import dataset_path
 from transforms.to_tensor import ToTensor
 
 # https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
@@ -34,14 +34,12 @@ def get_accuracy(net, testloader):
     correct = 0
     total = 0
     with torch.no_grad():
-        for _ in range(60):
-            for data in testloader:
-                images = data['image']
-                labels = data['character']
-                outputs = net(images)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+        for data in testloader:
+            images = data[0]
+            labels = data[1]
+            outputs = net(images)
+            total += labels.size(0)
+            correct += (outputs == labels).sum().item()
 
     info('Accuracy of the network on the training set: %.4f %%' % (100 * correct / total))
 
@@ -52,42 +50,54 @@ def get_info(string: float, length=12) -> str:
     return ' ' * length + string
 
 
-def train_network(device, lr, momentum, batch_size):
+def train_network(dataset_path, device, lr, momentum, batch_size, check_accuracy=False):
+    """
+    Trainings loop
+    :param dataset_path: Directory for dataset images
+    :param device: GPU device
+    :param lr: Learning rate
+    :param momentum: Learning momentum
+    :param batch_size: Batch tensor size
+    :param check_accuracy: Tests net accuracy on test data
+    """
     info('lr: %s, momentum: %s, batch size: %s' % (lr, momentum, batch_size))
 
     # Load Neural net and Data set
-    train_loader = DataLoader(ImageDataset(image_directory='resources/dataset', transform=ToTensor()),
-                              batch_size=batch_size, shuffle=True, num_workers=0)
+    size = 20
+    train_loader = DataLoader(
+        ImageDataset(size=size, image_directory=dataset_path, transform=ToTensor()),
+        batch_size=batch_size, shuffle=True, num_workers=0)
 
-    net = Net()
+    net = Net(size)
     last_epoch, last_loss = net.load_last_state()
     # net.to(device)
 
     # Look at accuracy from trained net
-    with Timer('Get accuracy', log_function=info):
-        get_accuracy(net,
-                     DataLoader(ImageDataset('resources/test_dataset', transform=ToTensor()), batch_size=batch_size,
-                                shuffle=True, num_workers=0))
+    if check_accuracy:
+        with Timer('Get accuracy', log_function=info):
+            get_accuracy(net, DataLoader(ImageDataset('resources/test_dataset', transform=ToTensor()),
+                                         batch_size=batch_size, shuffle=True, num_workers=0))
 
     # Load Optimizer and Loss function
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.L1Loss(reduction='sum')
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=momentum)
     running_loss = 0.0
     prev_loss = last_loss
-    counter = 60 * len(train_loader) // batch_size
+    repetitions = 60
+    counter = repetitions * len(train_loader) // batch_size
     last_save = perf_counter_ns()
 
     # Loop over the dataset multiple times
     for epoch in range(last_epoch + 1, 48000):
         with Timer('Net Training: Epoch', log_function=info) as timer:
-            for _ in range(60):
+            for _ in range(repetitions):
                 for data in train_loader:
                     # Zero the parameter gradients
                     for param in net.parameters():
                         param.grad = None
 
-                    inputs = data['image']  # .to(device)
-                    labels = data['character']  # .to(device)
+                    inputs = data[0]  # .to(device)
+                    labels = data[1]  # .to(device)
                     # forward + backward + optimize
                     outputs = net(inputs)
                     loss = criterion(outputs, labels)
@@ -104,8 +114,8 @@ def train_network(device, lr, momentum, batch_size):
             error('Loss is nan [%s]' % epoch)
             raise ValueError()
 
-        # Save the net to disk
-        if ((perf_counter_ns() - last_save) / 60_000_000_000) > 10:
+        # Save the net to disk every 10 minutes
+        if ((perf_counter_ns() - last_save) / 60_000_000_000) > 1:
             torch.save(net.state_dict(), join(net_dir, '[%s] %.4f.pth' % (epoch, running_loss)))
             info('STATE SAVED')
             last_save = perf_counter_ns()
@@ -125,4 +135,4 @@ if __name__ == '__main__':
     with Logger(debug=True, max_logfile_count=50):
         torch.autograd.set_detect_anomaly(False)  # Turn off for performance
         device = get_cuda_device()
-        train_network(device, lr=0.001, momentum=0.4, batch_size=4)
+        train_network(dataset_path, device, lr=0.001, momentum=0.4, batch_size=4)
