@@ -1,6 +1,6 @@
 from logging import info
 from os import walk
-from os.path import join
+from os.path import join, exists
 
 from PIL import Image
 from numpy import asarray, add, uint8, clip
@@ -46,6 +46,9 @@ class ImageDataset(Dataset):
         :param size: Width and height of image slices
         :param transform: Optional transform to be applied on a sample.
         """
+
+        if not exists(image_directory):
+            raise FileNotFoundError
 
         info('IMG SIZE: %s' % size)
         self.transform = transform
