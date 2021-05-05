@@ -45,9 +45,37 @@ def get_accuracy(net, testloader):
 
 
 def get_info(string: float, length=12) -> str:
-    string = "%.4f" % string
+    string = "%.10f" % string
     length -= len(string)
     return ' ' * length + string
+
+
+def save_state(net, running_loss: float, epoch: int, last_save: int, periodic_save_time: int = 1) -> int:
+    """
+    Save state if specified time has past
+    :param net: Net
+    :param running_loss: Running loss
+    :param epoch: Current epoch count
+    :param last_save: Time of last state saving
+    :param periodic_save_time: Time in seconds between each saving
+    :return: Current time
+    """
+    # Save the net to disk every n minutes
+    if ((perf_counter_ns() - last_save) / 60_000_000_000) > periodic_save_time:
+        if running_loss == float('nan'):
+            error('Loss is nan [%s]' % epoch)
+            raise ValueError()
+
+        torch.save(net.state_dict(), join(net_dir, '[%s] %.4f.pth' % (epoch, running_loss)))
+        last_save = perf_counter_ns()
+        info('STATE SAVED')
+
+        # Delete previous states
+        net_states = listdir(net_dir)
+        while len(net_states) > 30:
+            send2trash(join(net_dir, net_states.pop(0)))  # delete old state
+
+    return last_save
 
 
 def train_network(dataset_path, device, lr, momentum, batch_size, check_accuracy=False):
@@ -79,9 +107,8 @@ def train_network(dataset_path, device, lr, momentum, batch_size, check_accuracy
                                          batch_size=batch_size, shuffle=True, num_workers=0))
 
     # Load Optimizer and Loss function
-    criterion = nn.L1Loss(reduction='sum')
+    criterion = nn.L1Loss(reduction='mean')
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=momentum)
-    running_loss = 0.0
     prev_loss = last_loss
     repetitions = 60
     counter = repetitions * len(train_loader) // batch_size
@@ -89,6 +116,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size, check_accuracy
 
     # Loop over the dataset multiple times
     for epoch in range(last_epoch + 1, 48000):
+        running_loss = 0.0
         with Timer('Net Training: Epoch', log_function=info) as timer:
             for _ in range(repetitions):
                 for data in train_loader:
@@ -104,29 +132,14 @@ def train_network(dataset_path, device, lr, momentum, batch_size, check_accuracy
                     loss.backward()
                     optimizer.step()
                     running_loss += loss.item()
+                    last_save = save_state(net, running_loss, epoch, last_save)
 
             timer._message += '[%d] loss: %s\t%s\t%s  ' % (epoch,
                                                            get_info(running_loss / counter),
                                                            get_info((prev_loss - running_loss) / counter),
                                                            get_info((last_loss - running_loss) / counter))
 
-        if running_loss == float('nan'):
-            error('Loss is nan [%s]' % epoch)
-            raise ValueError()
-
-        # Save the net to disk every 10 minutes
-        if ((perf_counter_ns() - last_save) / 60_000_000_000) > 1:
-            torch.save(net.state_dict(), join(net_dir, '[%s] %.4f.pth' % (epoch, running_loss)))
-            info('STATE SAVED')
-            last_save = perf_counter_ns()
-
-        # Delete previous states
-        net_states = listdir(net_dir)
-        while len(net_states) > 30:
-            send2trash(join(net_dir, net_states.pop(0)))  # delete old state
-
         prev_loss = running_loss
-        running_loss = 0.0
 
     info('Finished Training')
 

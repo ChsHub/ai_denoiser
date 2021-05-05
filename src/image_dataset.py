@@ -76,7 +76,7 @@ class ImageDataset(Dataset):
         """
         Generator method for image slices
         :param _image_open: Method to open images
-        :return:
+        :return: Numpy array of image data
         """
         for root, _, files in walk(self._image_directory):
             for file in filter(lambda x: splitext(x)[-1] in ('.webp', '.jpg', '.png'), files):
