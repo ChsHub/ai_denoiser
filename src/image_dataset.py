@@ -1,23 +1,13 @@
 from logging import info
 from os import walk
-from os.path import join, exists
+from os.path import join, exists, splitext
 
 from PIL import Image
-from numpy import asarray, add, uint8, clip
+from numpy import asarray, add, uint8, clip, array
 from numpy.random import randint
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from transforms.to_tensor import ToTensor
-
-
-def show_image(input_tensor: Tensor, index: int) -> None:
-    """
-    Display image from Tensor
-    :param input_tensor: Tensor to show
-    :param index: Image number in tensor
-    """
-    Image.fromarray(input_tensor.numpy()[index, :, :, ::], 'RGB').show()
 
 
 def _noise_open(path: str) -> Image:
@@ -54,12 +44,13 @@ class ImageDataset(Dataset):
         self.transform = transform
         self._image_directory = image_directory
         self._size = size
-        self._num_slices = self.get_slice_count(image_directory, size)
-        self._image_generator = self.generate_slice()
-        self._noise_image_generator = self.generate_slice(_noise_open)
+        self._num_slices = self.get_slice_count(size)
+        info('DATASET SIZE: %s' % self._num_slices)
+        # Generators
+        self._noise_image_generator = self.generate_slice(size, (3, size, size), _noise_open)
+        self._image_generator = self.generate_slice(size, (3 * size * size))
 
-    @staticmethod
-    def get_slice_count(image_directory: str, size: int) -> int:
+    def get_slice_count(self, size: int, _image_open=Image.open) -> int:
         """
         Count how many image slices can be generated from all dataset images
         :param image_directory: Directory path containing images
@@ -67,9 +58,9 @@ class ImageDataset(Dataset):
         :return: Total slice count
         """
         counter = 0
-        for root, _, files in walk(image_directory):
-            for file in files:
-                with Image.open(join(root, file)) as image:
+        for root, _, files in walk(self._image_directory):
+            for file in filter(lambda x: splitext(x)[-1] in ('.webp', '.jpg', '.png'), files):
+                with _image_open(join(root, file)) as image:
                     size_x, size_y = image.size
                     counter += (size_x // size) * (size_y // size)
         return counter
@@ -81,34 +72,31 @@ class ImageDataset(Dataset):
         """
         return self._num_slices
 
-    def generate_slice(self, _image_open=Image.open):
+    def generate_slice(self, slice_size, shape, _image_open=Image.open) -> array:
         """
         Generator method for image slices
         :param _image_open: Method to open images
         :return:
         """
         for root, _, files in walk(self._image_directory):
-            for file in files:
+            for file in filter(lambda x: splitext(x)[-1] in ('.webp', '.jpg', '.png'), files):
                 with _image_open(join(root, file)) as image:
-                    data = asarray(image)
                     size_x, size_y = image.size
+                    data = asarray(image)
                     for x in range(0, size_x - self._size, self._size):
                         for y in range(0, size_y - self._size, self._size):
-                            yield data[y:y + self._size, x:x + self._size, :]
+                            yield data[y:y + slice_size, x:x + slice_size, :3].reshape(shape)  # Ignore alpha layer
 
     def __getitem__(self, idx):
         """
         Creating 3D Tensor from image. Array shape is nChannels x Height x Width.
         """
 
-        # if torch.is_tensor(idx):
-        #    idx = idx.tolist()
-
-        sample = {'image': next(self._noise_image_generator),
-                  'character': next(self._image_generator)}
+        data = next(self._noise_image_generator)
+        data2 = next(self._image_generator)
 
         if self.transform:
-            sample = self.transform(sample)
+            sample = self.transform([data, data2])
 
         return sample
 
@@ -121,4 +109,5 @@ if __name__ == '__main__':
     print(len(dataset))
     item = dataset[0]
     item = dataset[0]
+    # show_image(item[0])
     print(item)
