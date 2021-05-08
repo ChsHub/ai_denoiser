@@ -67,20 +67,18 @@ def format_number(string: float, length=12) -> str:
     return ' ' * length + string
 
 
-def get_loss_info(epoch, running_loss, prev_loss, last_loss, counter):
+def get_loss_info(epoch, running_loss, last_loss, counter):
     """
     Print trainings info
     :param epoch: Current epoch
     :param running_loss: Running loss of current epoch
-    :param prev_loss: Loss of previous epoch
     :param last_loss: Loss of previously saved epoch
     :param counter: Number of batches in one trainings epoch
     :return: String containing current trainings info
     """
-    return '[%d] loss: %s\t%s\t%s  ' % (epoch,
-                                        format_number(running_loss / counter),
-                                        format_number((prev_loss - running_loss) / counter),
-                                        format_number((last_loss - running_loss) / counter))
+    return '[%d] loss: %s\t%s  ' % (epoch,
+                                    format_number(running_loss / counter),
+                                    format_number((last_loss - running_loss) / counter))
 
 
 def save_state(net, running_loss: float, epoch: int, last_save: int, periodic_save_time: int = 10) -> int:
@@ -143,7 +141,6 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     # Load Optimizer and Loss function
     criterion = nn.L1Loss(reduction='mean')
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=momentum)
-    prev_loss = last_loss
     repetitions = 60
     # counter = repetitions * len(train_loader) // batch_size
     last_save = perf_counter_ns()
@@ -170,9 +167,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
                     running_loss += loss.item()
                     last_save = save_state(net, running_loss / counter, epoch, last_save)
 
-            timer._message += get_loss_info(epoch, running_loss, prev_loss, last_loss, counter)
-
-        prev_loss = running_loss
+            timer._message += get_loss_info(epoch, running_loss, last_loss, counter)
 
     info('Finished Training')
 
