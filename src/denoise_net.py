@@ -46,9 +46,9 @@ class Net(nn.Module):
                 self.load_state_dict(torch.load('nets/%s' % last_state))  # load last net
                 info('Load: %s' % last_state)
 
-                last_epoch, last_loss = last_state.split(' ')
-                last_loss = float(last_loss[:-4])
-                last_epoch = int(last_epoch[1:-1])
+                last_loss, last_epoch = last_state.split(' ')
+                last_loss = float(last_loss)
+                last_epoch = int(last_epoch[1:-5])
 
                 return last_epoch, last_loss
         except Exception:

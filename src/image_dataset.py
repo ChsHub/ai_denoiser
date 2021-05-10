@@ -1,6 +1,7 @@
 from logging import info
 from os import walk
 from os.path import join, exists, splitext
+from random import shuffle
 
 from PIL import Image
 from numpy import asarray, add, uint8, clip, array
@@ -41,12 +42,14 @@ class ImageDataset(Dataset):
             raise FileNotFoundError
 
         info('IMG SIZE: %s' % size)
+        self._image_paths = []
         self.transform = transform
         self._image_directory = image_directory
         self._size = size
         self._num_slices = self.get_slice_count(size)
         info('DATASET SIZE: %s' % self._num_slices)
         # Generators
+        shuffle(self._image_paths)
         self._noise_image_generator = self.generate_slice(size, (3, size, size), _noise_open)
         self._image_generator = self.generate_slice(size, (3 * size * size))
 
@@ -60,7 +63,9 @@ class ImageDataset(Dataset):
         counter = 0
         for root, _, files in walk(self._image_directory):
             for file in filter(lambda x: splitext(x)[-1] in ('.webp', '.jpg', '.png'), files):
-                with _image_open(join(root, file)) as image:
+                file = join(root, file)
+                with _image_open(file) as image:
+                    self._image_paths.append(file)
                     size_x, size_y = image.size
                     counter += (size_x // size) * (size_y // size)
         return counter
@@ -78,14 +83,13 @@ class ImageDataset(Dataset):
         :param _image_open: Method to open images
         :return: Numpy array of image data
         """
-        for root, _, files in walk(self._image_directory):
-            for file in filter(lambda x: splitext(x)[-1] in ('.webp', '.jpg', '.png'), files):
-                with _image_open(join(root, file)) as image:
-                    size_x, size_y = image.size
-                    data = asarray(image)
-                    for x in range(0, size_x - self._size, self._size):
-                        for y in range(0, size_y - self._size, self._size):
-                            yield data[y:y + slice_size, x:x + slice_size, :3].reshape(shape)  # Ignore alpha layer
+        for file in self._image_paths:
+            with _image_open(file) as image:
+                size_x, size_y = image.size
+                data = asarray(image)
+                for x in range(0, size_x - self._size, self._size):
+                    for y in range(0, size_y - self._size, self._size):
+                        yield data[y:y + slice_size, x:x + slice_size, :3].reshape(shape)  # Ignore alpha layer
 
     def __getitem__(self, idx):
         """

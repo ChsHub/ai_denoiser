@@ -97,7 +97,7 @@ def save_state(net, running_loss: float, epoch: int, last_save: int, periodic_sa
             error('Loss is nan [%s]' % epoch)
             raise ValueError()
 
-        file_name = '[%s] %.4f.pth' % (epoch, running_loss)
+        file_name = '%.4f [%s].pth' % (running_loss, epoch)
         torch.save(net.state_dict(), join(net_dir, file_name))
         last_save = perf_counter_ns()
         info('STATE SAVED ' + file_name)
@@ -105,7 +105,7 @@ def save_state(net, running_loss: float, epoch: int, last_save: int, periodic_sa
         # Delete previous states
         net_states = listdir(net_dir)
         while len(net_states) > 10:
-            send2trash(join(net_dir, net_states.pop(0)))  # delete old state
+            send2trash(join(net_dir, net_states.pop()))  # Delete old state
 
     return last_save
 
