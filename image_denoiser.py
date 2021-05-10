@@ -1,14 +1,11 @@
 # https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
 # C:\Python38\python.exe -m pip install D:\Making\Python\image_classifier\numpy-1.19.2+mkl-cp38-cp38-win_amd64.whl
 # C:\Python38\python.exe -m pip install torch==1.7.0+cpu torchvision==0.8.1+cpu torchaudio===0.7.0 -f https://download.pytorch.org/whl/torch_stable.html
-from logging import info, error
-from os import listdir
-from os.path import join
+from logging import info
 from time import perf_counter_ns
 
 import torch
 from logger_default import Logger
-from send2trash import send2trash
 from timerpy import Timer
 from torch import nn, optim
 from torch.utils.data import DataLoader
@@ -81,35 +78,6 @@ def get_loss_info(epoch, running_loss, last_loss, counter):
                                     format_number((last_loss - running_loss) / counter))
 
 
-def save_state(net, running_loss: float, epoch: int, last_save: int, periodic_save_time: int = 10) -> int:
-    """
-    Save state if specified time has past
-    :param net: Net
-    :param running_loss: Running loss
-    :param epoch: Current epoch count
-    :param last_save: Time of last state saving
-    :param periodic_save_time: Time in seconds between each saving
-    :return: Current time
-    """
-    # Save the net to disk every n minutes
-    if ((perf_counter_ns() - last_save) / 60_000_000_000) > periodic_save_time:
-        if running_loss == float('nan'):
-            error('Loss is nan [%s]' % epoch)
-            raise ValueError()
-
-        file_name = '%.4f [%s].pth' % (running_loss, epoch)
-        torch.save(net.state_dict(), join(net_dir, file_name))
-        last_save = perf_counter_ns()
-        info('STATE SAVED ' + file_name)
-
-        # Delete previous states
-        net_states = listdir(net_dir)
-        while len(net_states) > 10:
-            send2trash(join(net_dir, net_states.pop()))  # Delete old state
-
-    return last_save
-
-
 def train_network(dataset_path, device, lr, momentum, batch_size: int, check_accuracy=False):
     """
     Trainings loop
@@ -165,7 +133,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
                     loss.backward()
                     optimizer.step()
                     running_loss += loss.item()
-                    last_save = save_state(net, running_loss / counter, epoch, last_save)
+                    last_save = net.save_state(running_loss / counter, epoch, last_save)
 
             timer._message += get_loss_info(epoch, running_loss, last_loss, counter)
 
