@@ -1,7 +1,7 @@
 from logging import info
 from os import walk
 from os.path import join, exists, splitext
-from random import shuffle
+from random import shuffle, randint
 
 from PIL import Image
 from numpy import asarray, add, uint8, clip, array
@@ -9,22 +9,39 @@ from numpy.random import randint
 from torch.utils.data import Dataset
 
 from transforms.to_tensor import ToTensor
+from denoise_net import Net
 
 
-def _noise_open(path: str) -> Image:
+def _noise_open(path: str) -> (array, int, int):
     """
     Open image and apply random noise
     :param path: Image path
     :return: Image object
     """
-    result = Image.open(path)
-    result = asarray(result)
-    noise = randint(-10, 10, result.shape)
-    result = add(result, noise)
-    result = clip(result, 0, 255)
-    result = result.astype(uint8)
-    result = Image.fromarray(result, 'RGB')
-    return result
+    with Image.open(path) as image:
+        image = image.convert('RGB')
+        result = asarray(image)
+        # Add noise 50% of the time
+        if 1 == randint(0, 1):
+            # info('ADD NOISE')
+            noise = randint(-10, 10, result.shape)
+            result = add(result, noise)
+            result = clip(result, 0, 255)
+            result = result.astype(uint8)
+        # else:
+        # info('NO  NOISE')
+        return result, *image.size
+
+
+def _normal_open(path: str) -> (array, int, int):
+    """
+    Open image and apply random noise
+    :param path: Image path
+    :return: Image object, x and y size
+    """
+    with Image.open(path) as image:
+        image = image.convert('RGB')
+        return asarray(image), *image.size
 
 
 class ImageDataset(Dataset):
@@ -50,8 +67,8 @@ class ImageDataset(Dataset):
         info('DATASET SIZE: %s' % self._num_slices)
         # Generators
         shuffle(self._image_paths)
-        self._noise_image_generator = self.generate_slice(size, (3, size, size), _noise_open)
-        self._image_generator = self.generate_slice(size, (3 * size * size))
+        self._noise_image_generator = self.generate_slice(self._image_paths, size, (3, size, size), _noise_open)
+        self._image_generator = self.generate_slice(self._image_paths, size, (3 * size * size), _normal_open)
 
     def get_slice_count(self, size: int, _image_open=Image.open) -> int:
         """
@@ -77,19 +94,20 @@ class ImageDataset(Dataset):
         """
         return self._num_slices
 
-    def generate_slice(self, slice_size, shape, _image_open=Image.open) -> array:
+    def generate_slice(self, image_paths, slice_size, shape, _image_open) -> array:
         """
         Generator method for image slices
+        :param image_paths: List of image paths
+        :param slice_size: Width and Height of slices
+        :param shape: Shape of output array
         :param _image_open: Method to open images
         :return: Numpy array of image data
         """
-        for file in self._image_paths:
-            with _image_open(file) as image:
-                size_x, size_y = image.size
-                data = asarray(image)
-                for x in range(0, size_x - self._size, self._size):
-                    for y in range(0, size_y - self._size, self._size):
-                        yield data[y:y + slice_size, x:x + slice_size, :3].reshape(shape)  # Ignore alpha layer
+        for file in image_paths:
+            data, size_x, size_y = _image_open(file)
+            for x in range(0, size_x - self._size, self._size):
+                for y in range(0, size_y - self._size, self._size):
+                    yield data[y:y + slice_size, x:x + slice_size, :3].reshape(shape)  # Ignore alpha layer
 
     def __getitem__(self, idx):
         """
@@ -104,12 +122,16 @@ class ImageDataset(Dataset):
 
         return sample
 
-    def denoise_image(self, net, path):
-        pass
+    def denoise_image(self, path):
+        net = Net(self._size)
+        last_epoch, last_loss = net.load_last_state()
+        for input in self.generate_slice([path], self._size, (3 * self._size * self._size), _normal_open):
+            output = net(input)
 
 
 if __name__ == '__main__':
     dataset = ImageDataset('../resources/dataset', transform=ToTensor())
+    dataset.denoise_image("")
     print(len(dataset))
     item = dataset[0]
     item = dataset[0]

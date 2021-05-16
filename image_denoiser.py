@@ -2,7 +2,6 @@
 # C:\Python38\python.exe -m pip install D:\Making\Python\image_classifier\numpy-1.19.2+mkl-cp38-cp38-win_amd64.whl
 # C:\Python38\python.exe -m pip install torch==1.7.0+cpu torchvision==0.8.1+cpu torchaudio===0.7.0 -f https://download.pytorch.org/whl/torch_stable.html
 from logging import info
-from time import perf_counter_ns
 
 import torch
 from logger_default import Logger
@@ -10,6 +9,7 @@ from timerpy import Timer
 from torch import nn, optim
 from torch.utils.data import DataLoader
 
+from saver import Saver
 from src.denoise_net import Net
 from src.image_dataset import ImageDataset
 from src.paths import dataset_path
@@ -92,9 +92,8 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
 
     # Load Neural net and Data set
     size = 20
-    train_loader = DataLoader(
-        ImageDataset(size=size, image_directory=dataset_path, transform=ToTensor()),
-        batch_size=batch_size, shuffle=True, num_workers=0)
+    train_loader = DataLoader(ImageDataset(size=size, image_directory=dataset_path, transform=ToTensor()),
+                              batch_size=batch_size, shuffle=True, num_workers=0)
 
     net = Net(size)
     last_epoch, last_loss = net.load_last_state()
@@ -110,17 +109,18 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     criterion = nn.L1Loss(reduction='mean')
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=momentum)
     repetitions = 60
-    # counter = repetitions * len(train_loader) // batch_size
-    last_save = perf_counter_ns()
+    saver = Saver(net)
+    saver.start()
 
     # Loop over the dataset multiple times
-    for epoch in range(last_epoch + 1, 48000):
-        running_loss = 0.0
-        counter = 0
-        with Timer('Net Training: Epoch', log_function=info) as timer:
+    for saver.epoch in range(last_epoch + 1, 48000):
+        saver.running_loss = 0.0
+        saver.counter = 0
+
+        with Timer('Net Training: Epoch', log_function=info) as saver.timer:
             for _ in range(repetitions):
                 for data in train_loader:
-                    counter += 1
+                    saver.counter += 1
                     # Zero the parameter gradients
                     for param in net.parameters():
                         param.grad = None
@@ -132,10 +132,9 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
                     loss = criterion(outputs, labels)
                     loss.backward()
                     optimizer.step()
-                    running_loss += loss.item()
-                    last_save = net.save_state(running_loss / counter, epoch, last_save)
+                    saver.running_loss += loss.item()
 
-            timer._message += get_loss_info(epoch, running_loss, last_loss, counter)
+            saver.timer._message += get_loss_info(saver.epoch, saver.running_loss, last_loss, saver.counter)
 
     info('Finished Training')
 
@@ -144,4 +143,4 @@ if __name__ == '__main__':
     with Logger(debug=True, max_logfile_count=50):
         torch.autograd.set_detect_anomaly(False)  # Turn off for performance
         device = get_cuda_device()
-        train_network(dataset_path, device, lr=0.001, momentum=0.4, batch_size=4, check_accuracy=True)
+        train_network(dataset_path, device, lr=0.001, momentum=0.9, batch_size=4, check_accuracy=True)
