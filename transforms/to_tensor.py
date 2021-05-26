@@ -1,11 +1,10 @@
-from time import strftime
-
 import numpy
-import numpy as np
 import torch
 from PIL import Image
-from numpy import ndarray, multiply, int16, divide, subtract
+from numpy import ndarray, multiply, subtract
 from torch import tensor
+
+__value__ = 2 / 255
 
 
 def show_image(n: tensor):
@@ -37,7 +36,7 @@ def get_normalized_tensor(input_tensor: ndarray):
     :param input_tensor: Numpy image tile with value range [0, 255]
     :return: Tensor with value range [-1, 1]
     """
-    input_tensor = divide(input_tensor, 127.5, dtype=np.float)  # Convert image values from [0,255] to [0,2]
+    input_tensor = multiply(input_tensor, __value__)  # Convert image values from [0,255] to [0,2]
     input_tensor = subtract(input_tensor, 1.0)  # Convert image values from [0,2] to [-1,1]
     input_tensor = tensor(input_tensor.copy(), dtype=torch.float)
     return input_tensor
