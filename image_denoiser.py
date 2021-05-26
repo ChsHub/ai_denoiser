@@ -9,7 +9,7 @@ from timerpy import Timer
 from torch import nn, optim
 from torch.utils.data import DataLoader
 
-from saver import Saver
+from src.saver import Saver
 from src.denoise_net import Net
 from src.image_dataset import ImageDataset
 from src.paths import dataset_path
@@ -135,8 +135,6 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
                     saver.running_loss += loss.item()
 
             saver.timer._message += get_loss_info(saver.epoch, saver.running_loss, last_loss, saver.counter)
-
-    info('Finished Training')
 
 
 if __name__ == '__main__':

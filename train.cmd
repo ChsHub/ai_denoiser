@@ -1,0 +1,1 @@
+"C:\Python38\python.exe" "image_denoiser.py"

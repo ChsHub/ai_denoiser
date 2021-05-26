@@ -1,7 +1,7 @@
 from datetime import datetime
 from logging import info, error
-from os import listdir
-from os.path import join
+from os import listdir, remove
+from os.path import join, exists
 
 import torch
 from numpy import product
@@ -23,7 +23,7 @@ class Net(nn.Module):
         self.conv3 = nn.Conv2d(in_channels=convolutions[1], out_channels=convolutions[2], kernel_size=3)
         self.flat_features = 14 * 14 * convolutions[2]  # TODO SMALLER THAN IMAGE?
         self.fc1 = nn.Linear(self.flat_features, size * size * 3)
-        self.fc2 = nn.Linear(size * size * 3, size * size * 3)
+        # self.fc2 = nn.Linear(size * size * 3, size * size * 3)
         info('CONV LAYERS: %s' % convolutions)
         # info('NUM NEURONS: %s' % (convolutions[0] * 24 * 24 + convolutions[1] * 4 * 4))
 
@@ -34,7 +34,7 @@ class Net(nn.Module):
         x = self.conv3(x)
         x = x.view(-1, self.flat_features)
         x = functional.relu(self.fc1(x))
-        x = self.fc2(x)
+        # x = self.fc2(x)
         return x
 
     def num_flat_features(self, x):
@@ -47,20 +47,23 @@ class Net(nn.Module):
         :param directory: Net state directory
         :return: Last epoch number, and last loss value
         """
-        try:
-            net_states = listdir(directory)
-            if net_states:
-                last_state = net_states[-1]
-                self.load_state_dict(torch.load('nets/%s' % last_state))  # load last net
-                info('Load: %s' % last_state)
+        if not exists(directory):
+            info('path does not exists')
+            return 0, 0.0
 
-                _, last_loss, last_epoch = last_state.split(' ')
-                last_loss = float(last_loss)
-                last_epoch = int(last_epoch[1:-5])
+        net_states = listdir(directory)
+        if net_states:
+            last_state = net_states[-1]
+            self.load_state_dict(torch.load(join(directory, last_state)))  # load last net
+            info('Load: %s' % last_state)
 
-                return last_epoch, last_loss
-        except Exception:
-            info('Network changed')
+            _, last_loss, last_epoch = last_state.split(' ')
+            last_loss = float(last_loss)
+            last_epoch = int(last_epoch[1:-5])
+
+            return last_epoch, last_loss
+
+        info('Network changed')
         return 0, 0.0
 
     def save_state(self, running_loss: float, epoch: int, directory: str = 'nets') -> None:
@@ -81,4 +84,4 @@ class Net(nn.Module):
         # Delete previous states
         net_states = listdir(directory)
         while len(net_states) > 10:
-            send2trash(join(directory, net_states.pop(0)))  # Delete old state
+            remove(join(directory, net_states.pop(0)))  # Delete old state

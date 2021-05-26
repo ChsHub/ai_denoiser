@@ -3,13 +3,16 @@ from os import walk
 from os.path import join, exists, splitext
 from random import shuffle, randint
 
+import torch
 from PIL import Image
+from logger_default import Logger
 from numpy import asarray, add, uint8, clip, array
 from numpy.random import randint
+from torch import Tensor
 from torch.utils.data import Dataset
 
-from transforms.to_tensor import ToTensor
-from denoise_net import Net
+from src.denoise_net import Net
+from transforms.to_tensor import ToTensor, unnormalize, get_normalized_tensor
 
 
 def _noise_open(path: str) -> (array, int, int):
@@ -122,18 +125,57 @@ class ImageDataset(Dataset):
 
         return sample
 
+    def _denoise_tile(self, net, generator):
+        input = self.transform([next(generator)])
+        input = Tensor(input[0])
+        input = input.unsqueeze(0)
+        output = net(input)
+        return output.reshape((3, self._size, self._size))
+
     def denoise_image(self, path):
+        """
+        Denoise image by using the trained net
+        :param path: Image path
+        :return: None
+        """
         net = Net(self._size)
-        last_epoch, last_loss = net.load_last_state()
-        for input in self.generate_slice([path], self._size, (3 * self._size * self._size), _normal_open):
-            output = net(input)
+        last_epoch, last_loss = net.load_last_state('../nets')
+        image = []
+        with Image.open(path) as img:
+            width, height = img.size
+            width -= (width % self._size)
+            height -= (height % self._size)
+
+        for file in [path]:
+            data, size_x, size_y = _normal_open(file)
+            data = data.copy()
+            for x in range(0, size_x - self._size, self._size):
+                for y in range(0, size_y - self._size, self._size):
+                    tile1 = data[y:y + self._size, x:x + self._size, :3]  # .reshape((3, self._size, self._size))
+                    tile = get_normalized_tensor(tile1)
+                    tile = tile[0].unsqueeze(0)
+                    tile = net(tile)
+                    tile = tile.reshape((self._size, self._size, 3))
+                    tile = unnormalize(tile)
+
+                    for i in range(self._size):
+                        for j in range(self._size):
+                            for w in range(3):
+                                if int(tile[i, j, w]) != int(tile1[i, j, w]):
+                                    print(int(tile[i, j, w]), int(tile1[i, j, w]))
+                                    print(tile1)
+                    data[y:y + self._size, x:x + self._size, :3] = tile
+
+        Image.fromarray(data).show()
 
 
 if __name__ == '__main__':
-    dataset = ImageDataset('../resources/dataset', transform=ToTensor())
-    dataset.denoise_image("")
-    print(len(dataset))
-    item = dataset[0]
-    item = dataset[0]
-    # show_image(item[0])
-    print(item)
+    with Logger(debug=True):
+        dataset = ImageDataset('../resources/dataset', transform=ToTensor())
+        with torch.no_grad():
+            dataset.denoise_image("")
+        print(len(dataset))
+        item = dataset[0]
+        item = dataset[0]
+        # show_image(item[0])
+        print(item)

@@ -19,7 +19,7 @@ class Saver(Thread):
         """
         info('RUNNING')
         while True:
-            sleep(300)
+            sleep(600)
             self._net.save_state(running_loss=self.running_loss / self.counter, epoch=self.epoch)
             info('STATE SAVED // RUNNING LOSS: %.4f AVG BATCH TIME: %i ms' %
                  (self.running_loss / self.counter, (perf_counter_ns() - self.timer._start) / self.counter / 1_000_000))
