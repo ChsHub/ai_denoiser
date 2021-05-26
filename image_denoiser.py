@@ -13,7 +13,6 @@ from src.saver import Saver
 from src.denoise_net import Net
 from src.image_dataset import ImageDataset
 from src.paths import dataset_path
-from transforms.to_tensor import ToTensor
 
 # https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
 net_dir = 'nets'
@@ -92,7 +91,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
 
     # Load Neural net and Data set
     size = 20
-    train_loader = DataLoader(ImageDataset(size=size, image_directory=dataset_path, transform=ToTensor()),
+    train_loader = DataLoader(ImageDataset(size=size, image_directory=dataset_path),
                               batch_size=batch_size, shuffle=True, num_workers=0)
 
     net = Net(size)
@@ -102,7 +101,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     # Look at accuracy from trained net
     if check_accuracy:
         with Timer('Get accuracy', log_function=info):
-            print_accuracy(net, DataLoader(ImageDataset('resources/test_dataset', transform=ToTensor()),
+            print_accuracy(net, DataLoader(ImageDataset('resources/test_dataset'),
                                            batch_size=batch_size, shuffle=True, num_workers=0))
 
     # Load Optimizer and Loss function

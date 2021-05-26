@@ -40,9 +40,3 @@ def get_normalized_tensor(input_tensor: ndarray):
     input_tensor = subtract(input_tensor, 1.0)  # Convert image values from [0,2] to [-1,1]
     input_tensor = tensor(input_tensor.copy(), dtype=torch.float)
     return input_tensor
-
-
-class ToTensor:
-    def __call__(self, sample):
-        # Convert to tensors, set float type and normalize
-        return list(map(get_normalized_tensor, sample))

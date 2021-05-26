@@ -12,7 +12,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from src.denoise_net import Net
-from transforms.to_tensor import ToTensor, unnormalize, get_normalized_tensor
+from transforms.to_tensor import unnormalize, get_normalized_tensor
 
 
 def _noise_open(path: str) -> (array, int, int):
@@ -50,7 +50,7 @@ def _normal_open(path: str) -> (array, int, int):
 class ImageDataset(Dataset):
 
     # https://pytorch.org/tutorials/recipes/recipes/custom_dataset_transforms_loader.html?highlight=dataloader
-    def __init__(self, image_directory: str = '../resources/dataset', size: int = 20, transform=None):
+    def __init__(self, image_directory: str = '../resources/dataset', size: int = 20, transform=get_normalized_tensor):
         """
         Initialize image dataset
         :param image_directory: Path to the directory containing training images
@@ -110,7 +110,10 @@ class ImageDataset(Dataset):
             data, size_x, size_y = _image_open(file)
             for x in range(0, size_x - self._size, self._size):
                 for y in range(0, size_y - self._size, self._size):
-                    yield data[y:y + slice_size, x:x + slice_size, :3].reshape(shape)  # Ignore alpha layer
+                    tile = data[y:y + slice_size, x:x + slice_size, :3]  # Ignore alpha layer
+                    tile = tile.reshape(shape)
+                    tile = self.transform(tile)
+                    yield tile
 
     def __getitem__(self, idx):
         """
@@ -120,17 +123,7 @@ class ImageDataset(Dataset):
         data = next(self._noise_image_generator)
         data2 = next(self._image_generator)
 
-        if self.transform:
-            sample = self.transform([data, data2])
-
-        return sample
-
-    def _denoise_tile(self, net, generator):
-        input = self.transform([next(generator)])
-        input = Tensor(input[0])
-        input = input.unsqueeze(0)
-        output = net(input)
-        return output.reshape((3, self._size, self._size))
+        return [data, data2]
 
     def denoise_image(self, path):
         """
@@ -158,12 +151,6 @@ class ImageDataset(Dataset):
                     tile = tile.reshape((self._size, self._size, 3))
                     tile = unnormalize(tile)
 
-                    for i in range(self._size):
-                        for j in range(self._size):
-                            for w in range(3):
-                                if int(tile[i, j, w]) != int(tile1[i, j, w]):
-                                    print(int(tile[i, j, w]), int(tile1[i, j, w]))
-                                    print(tile1)
                     data[y:y + self._size, x:x + self._size, :3] = tile
 
         Image.fromarray(data).show()
@@ -171,7 +158,7 @@ class ImageDataset(Dataset):
 
 if __name__ == '__main__':
     with Logger(debug=True):
-        dataset = ImageDataset('../resources/dataset', transform=ToTensor())
+        dataset = ImageDataset('../resources/dataset')
         with torch.no_grad():
             dataset.denoise_image("")
         print(len(dataset))
