@@ -47,7 +47,9 @@ def _normal_open(path: str) -> (array, int, int):
 
 
 class ImageDataset(Dataset):
-
+    """
+    Data set for loading images from path and returning small tiles
+    """
     # https://pytorch.org/tutorials/recipes/recipes/custom_dataset_transforms_loader.html?highlight=dataloader
     def __init__(self, image_directory: str = '../resources/dataset', size: int = 20, transform=get_normalized_tensor):
         """
@@ -64,7 +66,7 @@ class ImageDataset(Dataset):
         self._image_paths = []
         self._transform = transform
         self._image_directory = image_directory
-        self._size = size
+        self.size = size
         self._num_slices = self.get_slice_count(size)
         info('DATASET SIZE: %s' % self._num_slices)
         # Generators
@@ -107,8 +109,8 @@ class ImageDataset(Dataset):
         """
         for file in image_paths:
             data, size_x, size_y = _image_open(file)
-            for x in range(0, size_x - self._size, self._size):
-                for y in range(0, size_y - self._size, self._size):
+            for x in range(0, size_x - self.size, self.size):
+                for y in range(0, size_y - self.size, self.size):
                     tile = data[y:y + slice_size, x:x + slice_size, :3]  # Ignore alpha layer
                     tile = tile.reshape(shape)
                     tile = self._transform(tile)
@@ -118,7 +120,6 @@ class ImageDataset(Dataset):
         """
         Creating 3D Tensor from image. Array shape is nChannels x Height x Width.
         """
-
         data = next(self._noise_image_generator)
         data2 = next(self._image_generator)
 
@@ -130,32 +131,28 @@ class ImageDataset(Dataset):
         :param path: Image path
         :return: None
         """
-        net = Net(self._size)
-        last_epoch, last_loss = net.load_last_state('../nets')
-        with Image.open(path) as img:
-            width, height = img.size
-            width -= (width % self._size)
-            height -= (height % self._size)
+        with torch.no_grad():
+            net = Net(self.size)
+            last_epoch, last_loss = net.load_last_state('../nets')
 
-        for file in [path]:
-            data, size_x, size_y = _normal_open(file)
-            data = data.copy()
-            for x in range(0, size_x - self._size, self._size):
-                for y in range(0, size_y - self._size, self._size):
-                    tile1 = data[y:y + self._size, x:x + self._size, :3].reshape((3, self._size, self._size))
-                    tile = get_normalized_tensor(tile1)
-                    tile = tile.unsqueeze(0)
-                    tile = net(tile)
-                    tile = tile.reshape((self._size, self._size, 3))
-                    tile = unnormalize(tile)
+            for file in [path]:
+                data, size_x, size_y = _normal_open(file)
+                data = data.copy()
+                for x in range(0, size_x - self.size, self.size):
+                    for y in range(0, size_y - self.size, self.size):
+                        tile1 = data[y:y + self.size, x:x + self.size, :3].reshape((3, self.size, self.size))
+                        tile = get_normalized_tensor(tile1)
+                        tile = tile.unsqueeze(0)
+                        tile = net(tile)
+                        tile = tile.reshape((self.size, self.size, 3))
+                        tile = unnormalize(tile)
 
-                    data[y:y + self._size, x:x + self._size, :3] = tile
+                        data[y:y + self.size, x:x + self.size, :3] = tile
 
-            Image.fromarray(data).show()
+                return Image.fromarray(data)
 
 
 if __name__ == '__main__':
     with Logger(debug=True):
         dataset = ImageDataset('../resources/dataset')
-        with torch.no_grad():
-            dataset.denoise_image("")
+        dataset.denoise_image("").show()

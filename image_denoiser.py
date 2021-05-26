@@ -1,6 +1,3 @@
-# https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
-# C:\Python38\python.exe -m pip install D:\Making\Python\image_classifier\numpy-1.19.2+mkl-cp38-cp38-win_amd64.whl
-# C:\Python38\python.exe -m pip install torch==1.7.0+cpu torchvision==0.8.1+cpu torchaudio===0.7.0 -f https://download.pytorch.org/whl/torch_stable.html
 from logging import info
 
 import torch
@@ -9,12 +6,15 @@ from timerpy import Timer
 from torch import nn, optim
 from torch.utils.data import DataLoader
 
-from src.saver import Saver
 from src.denoise_net import Net
 from src.image_dataset import ImageDataset
 from src.paths import dataset_path
+from src.saver import Saver
 
+# https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
 # https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
+# C:\Python38\python.exe -m pip install D:\Making\Python\image_classifier\numpy-1.19.2+mkl-cp38-cp38-win_amd64.whl
+# C:\Python38\python.exe -m pip install torch==1.7.0+cpu torchvision==0.8.1+cpu torchaudio===0.7.0 -f https://download.pytorch.org/whl/torch_stable.html
 net_dir = 'nets'
 
 
@@ -32,20 +32,21 @@ def print_accuracy(net, test_loader) -> None:
     :param net: Current network
     :param test_loader: Dataload of test data
     """
-    correct = 0
-    total = 0
-    criterion = nn.L1Loss(reduction='mean')
-    loss_total = 0
-    with torch.no_grad():
-        for data in test_loader:
-            images = data[0]
-            labels = data[1]
-            outputs = net(images)
-            total += labels.size(0)
-            correct += (outputs == labels).sum().item()
-            # Get loss
-            loss = criterion(outputs, labels)
-            loss_total += loss.item()
+    with Timer('print_accuracy', log_function=info):
+        correct = 0
+        total = 0
+        criterion = nn.L1Loss(reduction='mean')
+        loss_total = 0
+
+        with torch.no_grad():
+            for data in test_loader:
+                images, labels = data
+                outputs = net(images)
+                total += labels.size(0)
+                correct += (outputs == labels).sum().item()
+                # Get loss
+                loss = criterion(outputs, labels)
+                loss_total += loss.item()
 
     info('Accuracy of the network on the training set: %.4f %% Mean loss: %.4f' % (100 * correct / total,
                                                                                    loss_total / len(test_loader)))
@@ -90,19 +91,18 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     info('lr: %s, momentum: %s, batch size: %s' % (lr, momentum, batch_size))
 
     # Load Neural net and Data set
-    size = 20
-    train_loader = DataLoader(ImageDataset(size=size, image_directory=dataset_path),
+    image_dataset = ImageDataset(image_directory=dataset_path)
+    train_loader = DataLoader(image_dataset,
                               batch_size=batch_size, shuffle=True, num_workers=0)
 
-    net = Net(size)
+    net = Net(train_loader.dataset.size)
     last_epoch, last_loss = net.load_last_state()
     # net.to(device)
 
     # Look at accuracy from trained net
     if check_accuracy:
-        with Timer('Get accuracy', log_function=info):
-            print_accuracy(net, DataLoader(ImageDataset('resources/test_dataset'),
-                                           batch_size=batch_size, shuffle=True, num_workers=0))
+        print_accuracy(net, DataLoader(
+            ImageDataset('resources/test_dataset'), batch_size=batch_size, shuffle=True, num_workers=0))
 
     # Load Optimizer and Loss function
     criterion = nn.L1Loss(reduction='mean')
@@ -124,8 +124,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
                     for param in net.parameters():
                         param.grad = None
 
-                    inputs = data[0]  # .to(device)
-                    labels = data[1]  # .to(device)
+                    inputs, labels = data  # .to(device)
                     # forward + backward + optimize
                     outputs = net(inputs)
                     loss = criterion(outputs, labels)

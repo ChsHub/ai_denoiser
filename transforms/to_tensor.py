@@ -1,20 +1,9 @@
 import numpy
 import torch
-from PIL import Image
 from numpy import ndarray, multiply, subtract
 from torch import tensor
 
 __value__ = 2 / 255
-
-
-def show_image(n: tensor):
-    """
-    Undo normalization and show image
-    :param n: Image tensor
-    """
-    n = unnormalize(n)
-    n = n.reshape((n.shape[1], n.shape[2], n.shape[0]))
-    Image.fromarray(n).show()
 
 
 def unnormalize(n: tensor):
