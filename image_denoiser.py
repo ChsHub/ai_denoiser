@@ -78,7 +78,7 @@ def get_loss_info(epoch, running_loss, last_loss, counter):
                                     format_number((last_loss - running_loss) / counter))
 
 
-def train_network(dataset_path, device, lr, momentum, batch_size: int, check_accuracy=False):
+def train_network(dataset_path, device, lr, momentum, batch_size: int, check_accuracy=False, num_workers: int = 0):
     """
     Trainings loop
     :param dataset_path: Directory for dataset images
@@ -87,13 +87,13 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     :param momentum: Learning momentum
     :param batch_size: Batch tensor size
     :param check_accuracy: Tests net accuracy on test data
+    :param num_workers: Number of additional processes launched by data-loaders
     """
     info('lr: %s, momentum: %s, batch size: %s' % (lr, momentum, batch_size))
 
     # Load Neural net and Data set
     image_dataset = ImageDataset(image_directory=dataset_path)
-    train_loader = DataLoader(image_dataset,
-                              batch_size=batch_size, shuffle=True, num_workers=0)
+    train_loader = DataLoader(image_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     net = Net(train_loader.dataset.size)
     last_epoch, last_loss = net.load_last_state()
@@ -102,7 +102,7 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     # Look at accuracy from trained net
     if check_accuracy:
         print_accuracy(net, DataLoader(
-            ImageDataset('resources/test_dataset'), batch_size=batch_size, shuffle=True, num_workers=0))
+            ImageDataset('resources/test_dataset'), batch_size=batch_size, shuffle=False, num_workers=num_workers))
 
     # Load Optimizer and Loss function
     criterion = nn.L1Loss(reduction='mean')
