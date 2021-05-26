@@ -8,7 +8,6 @@ from PIL import Image
 from logger_default import Logger
 from numpy import asarray, add, uint8, clip, array
 from numpy.random import randint
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from src.denoise_net import Net
@@ -63,7 +62,7 @@ class ImageDataset(Dataset):
 
         info('IMG SIZE: %s' % size)
         self._image_paths = []
-        self.transform = transform
+        self._transform = transform
         self._image_directory = image_directory
         self._size = size
         self._num_slices = self.get_slice_count(size)
@@ -112,7 +111,7 @@ class ImageDataset(Dataset):
                 for y in range(0, size_y - self._size, self._size):
                     tile = data[y:y + slice_size, x:x + slice_size, :3]  # Ignore alpha layer
                     tile = tile.reshape(shape)
-                    tile = self.transform(tile)
+                    tile = self._transform(tile)
                     yield tile
 
     def __getitem__(self, idx):
@@ -133,7 +132,6 @@ class ImageDataset(Dataset):
         """
         net = Net(self._size)
         last_epoch, last_loss = net.load_last_state('../nets')
-        image = []
         with Image.open(path) as img:
             width, height = img.size
             width -= (width % self._size)
@@ -144,16 +142,16 @@ class ImageDataset(Dataset):
             data = data.copy()
             for x in range(0, size_x - self._size, self._size):
                 for y in range(0, size_y - self._size, self._size):
-                    tile1 = data[y:y + self._size, x:x + self._size, :3]  # .reshape((3, self._size, self._size))
+                    tile1 = data[y:y + self._size, x:x + self._size, :3].reshape((3, self._size, self._size))
                     tile = get_normalized_tensor(tile1)
-                    tile = tile[0].unsqueeze(0)
+                    tile = tile.unsqueeze(0)
                     tile = net(tile)
                     tile = tile.reshape((self._size, self._size, 3))
                     tile = unnormalize(tile)
 
                     data[y:y + self._size, x:x + self._size, :3] = tile
 
-        Image.fromarray(data).show()
+            Image.fromarray(data).show()
 
 
 if __name__ == '__main__':
@@ -161,8 +159,3 @@ if __name__ == '__main__':
         dataset = ImageDataset('../resources/dataset')
         with torch.no_grad():
             dataset.denoise_image("")
-        print(len(dataset))
-        item = dataset[0]
-        item = dataset[0]
-        # show_image(item[0])
-        print(item)
