@@ -8,48 +8,34 @@ from PIL import Image
 from logger_default import Logger
 from numpy import asarray, add, uint8, clip, array
 from numpy.random import randint
+from timerpy import Timer
+from torch import Tensor
 from torch.utils.data import Dataset
 
 from src.denoise_net import Net
 from transforms.to_tensor import unnormalize, get_normalized_tensor
 
 
-def _noise_open(path: str) -> (array, int, int):
+def add_noise(result: array) -> array:
     """
-    Open image and apply random noise
-    :param path: Image path
-    :return: Image object
+    Add random noise to array
+    :param result: Image tile array
+    :return: Noisy array
     """
-    with Image.open(path) as image:
-        image = image.convert('RGB')
-        result = asarray(image)
-        # Add noise 50% of the time
-        if 1 == randint(0, 1):
-            # info('ADD NOISE')
-            noise = randint(-10, 10, result.shape)
-            result = add(result, noise)
-            result = clip(result, 0, 255)
-            result = result.astype(uint8)
-        # else:
-        # info('NO  NOISE')
-        return result, *image.size
-
-
-def _normal_open(path: str) -> (array, int, int):
-    """
-    Open image and apply random noise
-    :param path: Image path
-    :return: Image object, x and y size
-    """
-    with Image.open(path) as image:
-        image = image.convert('RGB')
-        return asarray(image), *image.size
+    # Add noise 50% of the time
+    if randint(0, 2):
+        noise = randint(-10, 10, result.shape)
+        result = add(result, noise)
+        result = clip(result, 0, 255)
+        result = result.astype(uint8)
+    return result
 
 
 class ImageDataset(Dataset):
     """
     Data set for loading images from path and returning small tiles
     """
+
     # https://pytorch.org/tutorials/recipes/recipes/custom_dataset_transforms_loader.html?highlight=dataloader
     def __init__(self, image_directory: str = '../resources/dataset', size: int = 20, transform=get_normalized_tensor):
         """
@@ -71,8 +57,7 @@ class ImageDataset(Dataset):
         info('DATASET SIZE: %s' % self._num_slices)
         # Generators
         shuffle(self._image_paths)
-        self._noise_image_generator = self.generate_slice(self._image_paths, size, (3, size, size), _noise_open)
-        self._image_generator = self.generate_slice(self._image_paths, size, (3 * size * size), _normal_open)
+        self._image_generator = self.generate_slice()
 
     def get_slice_count(self, size: int, _image_open=Image.open) -> int:
         """
@@ -98,32 +83,31 @@ class ImageDataset(Dataset):
         """
         return self._num_slices
 
-    def generate_slice(self, image_paths, slice_size, shape, _image_open) -> array:
+    def generate_slice(self) -> array:
         """
         Generator method for image slices
-        :param image_paths: List of image paths
-        :param slice_size: Width and Height of slices
-        :param shape: Shape of output array
-        :param _image_open: Method to open images
         :return: Numpy array of image data
         """
-        for file in image_paths:
-            data, size_x, size_y = _image_open(file)
+        for file in self._image_paths:
+            with Image.open(file) as image:
+                if not image.mode.startswith('RGB'):
+                    image = image.convert('RGB')
+                size_x, size_y = image.size
+                data = asarray(image)
+
             for x in range(0, size_x - self.size, self.size):
                 for y in range(0, size_y - self.size, self.size):
-                    tile = data[y:y + slice_size, x:x + slice_size, :3]  # Ignore alpha layer
-                    tile = tile.reshape(shape)
-                    tile = self._transform(tile)
-                    yield tile
+                    tile = data[y:y + self.size, x:x + self.size, :3]  # Ignore alpha layer
+                    noise_tile = add_noise(tile.copy())
+                    noise_tile = noise_tile.reshape((3, self.size, self.size))
+                    tile = tile[8:12, 8:12].reshape((3, 4, 4))
+                    yield self._transform(noise_tile), self._transform(tile)
 
     def __getitem__(self, idx):
         """
         Creating 3D Tensor from image. Array shape is nChannels x Height x Width.
         """
-        data = next(self._noise_image_generator)
-        data2 = next(self._image_generator)
-
-        return [data, data2]
+        return next(self._image_generator)
 
     def denoise_image(self, path):
         """
@@ -136,20 +120,22 @@ class ImageDataset(Dataset):
             last_epoch, last_loss = net.load_last_state('../nets')
 
             for file in [path]:
-                data, size_x, size_y = _normal_open(file)
-                data = data.copy()
-                for x in range(0, size_x - self.size, self.size):
-                    for y in range(0, size_y - self.size, self.size):
-                        tile1 = data[y:y + self.size, x:x + self.size, :3].reshape((3, self.size, self.size))
-                        tile = get_normalized_tensor(tile1)
-                        tile = tile.unsqueeze(0)
-                        tile = net(tile)
-                        tile = tile.reshape((self.size, self.size, 3))
-                        tile = unnormalize(tile)
+                with Image.open(file) as image:
+                    size_x, size_y = image.size
+                    data = asarray(image)[:, :, :3]  # TODO test RGBA
+                    data = data.reshape((3, size_y, size_x))
+                    data = get_normalized_tensor(data)
+                result = data.copy()
+                for x in range(0, size_x - self.size, 4):
+                    with Timer('COLUMN'):
+                        for y in range(0, size_y - self.size, 4):
+                            tile = data[:, y:y + self.size, x:x + self.size]
+                            tile = tile.unsqueeze(0)
+                            tile = net(tile)
+                            tile = unnormalize(tile)
+                            result[:, y + 8:y + 12, x + 8:x + 12] = tile
 
-                        data[y:y + self.size, x:x + self.size, :3] = tile
-
-                return Image.fromarray(data)
+                return Image.fromarray(result.reshape((size_y, size_x, 3)))
 
 
 if __name__ == '__main__':

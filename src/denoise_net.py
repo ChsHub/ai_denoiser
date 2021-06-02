@@ -16,14 +16,13 @@ class Net(nn.Module):
         super(Net, self).__init__()
 
         # kernel
-        convolutions = [8, 16, 7]
+        convolutions = [24, 24, 24]
         # 3x3 square convolutions
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=convolutions[0], kernel_size=3)
-        self.conv2 = nn.Conv2d(in_channels=convolutions[0], out_channels=convolutions[1], kernel_size=3)
-        self.conv3 = nn.Conv2d(in_channels=convolutions[1], out_channels=convolutions[2], kernel_size=3)
-        self.flat_features = 14 * 14 * convolutions[2]  # TODO SMALLER THAN IMAGE?
-        self.fc1 = nn.Linear(self.flat_features, size * size * 3)
-        # self.fc2 = nn.Linear(size * size * 3, size * size * 3)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=convolutions[0], kernel_size=(5, 5))
+        self.conv2 = nn.Conv2d(in_channels=convolutions[0], out_channels=convolutions[1], kernel_size=(5, 5))
+        self.conv3 = nn.Conv2d(in_channels=convolutions[1], out_channels=convolutions[2], kernel_size=(5, 5))
+        self.conv4 = nn.Conv2d(in_channels=convolutions[2], out_channels=3, kernel_size=(5, 5))
+
         info('CONV LAYERS: %s' % convolutions)
         # info('NUM NEURONS: %s' % (convolutions[0] * 24 * 24 + convolutions[1] * 4 * 4))
 
@@ -32,14 +31,8 @@ class Net(nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-        x = x.view(-1, self.flat_features)
-        x = functional.relu(self.fc1(x))
-        # x = self.fc2(x)
+        x = self.conv4(x)
         return x
-
-    def num_flat_features(self, x):
-        size = x.size()[1:]  # all dimensions except the batch dimension
-        return product(size.numpy())
 
     def load_last_state(self, directory: str = 'nets') -> (int, float):
         """
@@ -51,19 +44,21 @@ class Net(nn.Module):
             info('path does not exists')
             return 0, 0.0
 
-        net_states = listdir(directory)
-        if net_states:
-            last_state = net_states[-1]
-            self.load_state_dict(torch.load(join(directory, last_state)))  # load last net
-            info('Load: %s' % last_state)
+        try:
+            net_states = listdir(directory)
+            if net_states:
+                last_state = net_states[-1]
+                self.load_state_dict(torch.load(join(directory, last_state)))  # load last net
+                info('Load: %s' % last_state)
 
-            _, last_loss, last_epoch = last_state.split(' ')
-            last_loss = float(last_loss)
-            last_epoch = int(last_epoch[1:-5])
+                _, last_loss, last_epoch = last_state.split(' ')
+                last_loss = float(last_loss)
+                last_epoch = int(last_epoch[1:-5])
 
-            return last_epoch, last_loss
+                return last_epoch, last_loss
+        except RuntimeError:
+            info('Network changed')
 
-        info('Network changed')
         return 0, 0.0
 
     def save_state(self, running_loss: float, epoch: int, directory: str = 'nets') -> None:
