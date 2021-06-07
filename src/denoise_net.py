@@ -4,10 +4,10 @@ from os import listdir, remove
 from os.path import join, exists
 
 import torch
-from numpy import product
-from send2trash import send2trash
-from torch import nn
-from torch.nn import functional
+from torch import nn, Tensor
+from torch.nn import Linear
+from torch.nn.functional import relu
+
 
 
 class Net(nn.Module):
@@ -16,22 +16,25 @@ class Net(nn.Module):
         super(Net, self).__init__()
 
         # kernel
-        convolutions = [24, 24, 24]
-        # 3x3 square convolutions
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=convolutions[0], kernel_size=(5, 5))
-        self.conv2 = nn.Conv2d(in_channels=convolutions[0], out_channels=convolutions[1], kernel_size=(5, 5))
-        self.conv3 = nn.Conv2d(in_channels=convolutions[1], out_channels=convolutions[2], kernel_size=(5, 5))
-        self.conv4 = nn.Conv2d(in_channels=convolutions[2], out_channels=3, kernel_size=(5, 5))
-
+        convolutions = [8]
         info('CONV LAYERS: %s' % convolutions)
-        # info('NUM NEURONS: %s' % (convolutions[0] * 24 * 24 + convolutions[1] * 4 * 4))
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=convolutions[0], kernel_size=(5, 5))
+        # Flat
+        self.flat_features = 16 * 16 * convolutions[-1]
+        linears = [self.flat_features, 20 * 20 * 3, 20 * 20 * 3, 20 * 20 * 3,  20 * 20 * 3]
+        info('LIN LAYERS: %s' % linears)
+        self.fc1 = Linear(linears[0], linears[1])
+        self.fc2 = Linear(linears[1], linears[2])
+        self.fc3 = Linear(linears[2], linears[3])
+        self.fc4 = Linear(linears[3], linears[4])
 
-    def forward(self, x):
-        # Max pooling over a (2, 2) window
+    def forward(self, x: Tensor):
         x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
+        x = x.view(-1, self.flat_features)
+        x = relu(self.fc1(x))
+        x = relu(self.fc2(x))
+        x = relu(self.fc3(x))
+        x = self.fc4(x)
         return x
 
     def load_last_state(self, directory: str = 'nets') -> (int, float):
@@ -74,7 +77,6 @@ class Net(nn.Module):
 
         file_name = '%s %.4f [%s].pth' % (datetime.now().strftime("%Y-%m-%d-%H-%M"), running_loss, epoch)
         torch.save(self.state_dict(), join(directory, file_name))
-        # print(abspath(join(directory, file_name)))
 
         # Delete previous states
         net_states = listdir(directory)

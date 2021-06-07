@@ -9,7 +9,6 @@ from logger_default import Logger
 from numpy import asarray, add, uint8, clip, array
 from numpy.random import randint
 from timerpy import Timer
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from src.denoise_net import Net
@@ -86,21 +85,19 @@ class ImageDataset(Dataset):
     def generate_slice(self) -> array:
         """
         Generator method for image slices
-        :return: Numpy array of image data
+        :return: Numpy array of noisy image data, Numpy array of original image data
         """
         for file in self._image_paths:
             with Image.open(file) as image:
-                if not image.mode.startswith('RGB'):
-                    image = image.convert('RGB')
                 size_x, size_y = image.size
-                data = asarray(image)
+                data = asarray(image)[:, :, :3]  # Remove Alpha layer
 
             for x in range(0, size_x - self.size, self.size):
                 for y in range(0, size_y - self.size, self.size):
-                    tile = data[y:y + self.size, x:x + self.size, :3]  # Ignore alpha layer
+                    tile = data[y:y + self.size, x:x + self.size]  # Ignore alpha layer
                     noise_tile = add_noise(tile.copy())
                     noise_tile = noise_tile.reshape((3, self.size, self.size))
-                    tile = tile[8:12, 8:12].reshape((3, 4, 4))
+                    tile = tile.reshape((3 * self.size * self.size))
                     yield self._transform(noise_tile), self._transform(tile)
 
     def __getitem__(self, idx):
@@ -123,17 +120,18 @@ class ImageDataset(Dataset):
                 with Image.open(file) as image:
                     size_x, size_y = image.size
                     data = asarray(image)[:, :, :3]  # TODO test RGBA
-                    data = data.reshape((3, size_y, size_x))
-                    data = get_normalized_tensor(data)
                 result = data.copy()
-                for x in range(0, size_x - self.size, 4):
-                    with Timer('COLUMN'):
-                        for y in range(0, size_y - self.size, 4):
-                            tile = data[:, y:y + self.size, x:x + self.size]
-                            tile = tile.unsqueeze(0)
-                            tile = net(tile)
-                            tile = unnormalize(tile)
-                            result[:, y + 8:y + 12, x + 8:x + 12] = tile
+
+                for x in range(0, size_x - self.size, self.size):
+                    for y in range(0, size_y - self.size, self.size):
+                        tile = data[y:y + self.size, x:x + self.size]
+                        tile = tile.reshape((3, self.size, self.size))
+                        tile = get_normalized_tensor(tile)
+                        tile = tile.unsqueeze(0)
+                        tile = net(tile)
+                        tile = unnormalize(tile)
+                        tile = tile.reshape((self.size, self.size, 3))
+                        result[y:y + self.size, x:x + self.size] = tile
 
                 return Image.fromarray(result.reshape((size_y, size_x, 3)))
 
@@ -141,4 +139,5 @@ class ImageDataset(Dataset):
 if __name__ == '__main__':
     with Logger(debug=True):
         dataset = ImageDataset('../resources/dataset')
-        dataset.denoise_image("").show()
+        with Timer('INFERENCE'):
+            dataset.denoise_image().show()
