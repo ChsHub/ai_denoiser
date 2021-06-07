@@ -9,19 +9,18 @@ from torch.nn import Linear
 from torch.nn.functional import relu
 
 
-
 class Net(nn.Module):
 
     def __init__(self, size):
         super(Net, self).__init__()
 
         # kernel
-        convolutions = [8]
+        convolutions = [5]
         info('CONV LAYERS: %s' % convolutions)
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=convolutions[0], kernel_size=(5, 5))
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=convolutions[0], kernel_size=(5, 5))
         # Flat
         self.flat_features = 16 * 16 * convolutions[-1]
-        linears = [self.flat_features, 20 * 20 * 3, 20 * 20 * 3, 20 * 20 * 3,  20 * 20 * 3]
+        linears = [self.flat_features, 20 * 20, 20 * 20, 20 * 20, 20 * 20]
         info('LIN LAYERS: %s' % linears)
         self.fc1 = Linear(linears[0], linears[1])
         self.fc2 = Linear(linears[1], linears[2])

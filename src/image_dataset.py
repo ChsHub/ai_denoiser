@@ -90,15 +90,16 @@ class ImageDataset(Dataset):
         for file in self._image_paths:
             with Image.open(file) as image:
                 size_x, size_y = image.size
-                data = asarray(image)[:, :, :3]  # Remove Alpha layer
+                data = asarray(image)
 
-            for x in range(0, size_x - self.size, self.size):
-                for y in range(0, size_y - self.size, self.size):
-                    tile = data[y:y + self.size, x:x + self.size]  # Ignore alpha layer
-                    noise_tile = add_noise(tile.copy())
-                    noise_tile = noise_tile.reshape((3, self.size, self.size))
-                    tile = tile.reshape((3 * self.size * self.size))
-                    yield self._transform(noise_tile), self._transform(tile)
+            for z in range(data.shape[-1]):
+                for x in range(0, size_x - self.size, self.size):
+                    for y in range(0, size_y - self.size, self.size):
+                        tile = data[y:y + self.size, x:x + self.size, z]  # Ignore alpha layer
+                        noise_tile = add_noise(tile.copy())
+                        noise_tile = noise_tile.reshape((1, self.size, self.size))
+                        tile = tile.reshape((self.size * self.size))
+                        yield self._transform(noise_tile), self._transform(tile)
 
     def __getitem__(self, idx):
         """
@@ -119,25 +120,26 @@ class ImageDataset(Dataset):
             for file in [path]:
                 with Image.open(file) as image:
                     size_x, size_y = image.size
-                    data = asarray(image)[:, :, :3]  # TODO test RGBA
-                result = data.copy()
+                    data = asarray(image).copy()
+                # Iterate image tiles
+                for z in range(data.shape[-1]):
+                    for x in range(0, size_x - self.size, self.size):
+                        for y in range(0, size_y - self.size, self.size):
+                            tile = data[y:y + self.size, x:x + self.size, z]
+                            tile = tile.reshape((1, self.size, self.size))
+                            tile = get_normalized_tensor(tile)
+                            tile = tile.unsqueeze(0)
+                            tile = net(tile)
+                            tile = unnormalize(tile)
+                            tile = tile.reshape((self.size, self.size))
+                            data[y:y + self.size, x:x + self.size, z] = tile
 
-                for x in range(0, size_x - self.size, self.size):
-                    for y in range(0, size_y - self.size, self.size):
-                        tile = data[y:y + self.size, x:x + self.size]
-                        tile = tile.reshape((3, self.size, self.size))
-                        tile = get_normalized_tensor(tile)
-                        tile = tile.unsqueeze(0)
-                        tile = net(tile)
-                        tile = unnormalize(tile)
-                        tile = tile.reshape((self.size, self.size, 3))
-                        result[y:y + self.size, x:x + self.size] = tile
-
-                return Image.fromarray(result.reshape((size_y, size_x, 3)))
+                return Image.fromarray(data.reshape((size_y, size_x, 3)))
 
 
 if __name__ == '__main__':
     with Logger(debug=True):
         dataset = ImageDataset('../resources/dataset')
         with Timer('INFERENCE'):
-            dataset.denoise_image().show()
+            image = dataset.denoise_image()
+        image.show()
