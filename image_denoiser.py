@@ -102,7 +102,8 @@ def train_network(dataset_path, device, lr, momentum, batch_size: int, check_acc
     # Look at accuracy from trained net
     if check_accuracy:
         print_accuracy(net, DataLoader(
-            ImageDataset('resources/test_dataset'), batch_size=batch_size, shuffle=False, num_workers=num_workers))
+            ImageDataset('resources/test_dataset', add_noise_always=True),
+            batch_size=batch_size, shuffle=False, num_workers=num_workers))
 
     # Load Optimizer and Loss function
     criterion = nn.L1Loss(reduction='mean')
